@@ -363,13 +363,13 @@ document.addEventListener('DOMContentLoaded', () => {
     els.btnExport.addEventListener('click', () => {
         if (!hasData) return;
 
-        // Cập nhật lại allData từ DOM trước khi xuất
-        document.querySelectorAll('.po-row').forEach((tr, index) => {
-            const originalData = allData[index];
-            allData[index] = {
-                ...originalData,
-                poDate: tr.querySelector('td[data-field="poDate"]').textContent.trim(),
+        const trElements = els.dataBody.querySelectorAll('.po-row');
+        const exportArray = [];
+
+        trElements.forEach(tr => {
+            exportArray.push({
                 orderNo: tr.querySelector('td[data-field="orderNo"]').textContent.trim(),
+                poDate: tr.querySelector('td[data-field="poDate"]').textContent.trim(),
                 deliveryDateToStore: tr.querySelector('td[data-field="deliveryDateToStore"]').textContent.trim(),
                 deliveredTo: tr.querySelector('td[data-field="deliveredTo"]').textContent.trim(),
                 barcode: tr.querySelector('td[data-field="barcode"]').textContent.trim(),
@@ -377,10 +377,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 quantity: tr.querySelector('td[data-field="quantity"]').textContent.trim(),
                 unit: tr.querySelector('td[data-field="unit"]').textContent.trim(),
                 note: tr.querySelector('td[data-field="note"]').textContent.trim()
-            };
+            });
         });
 
-        doExportExcel(allData, `Trich_Xuat_PO_${currentPdfFiles.length}_Tep.xlsx`);
+        doExportExcel(exportArray, `Trich_Xuat_PO_${currentPdfFiles.length}_Tep.xlsx`);
     });
 
     // Hàm xuất dữ liệu ra tệp Excel
