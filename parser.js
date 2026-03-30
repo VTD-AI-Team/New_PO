@@ -74,14 +74,19 @@ async function extractPOData(arrayBuffer) {
 
             // XỬ LÝ KHÔNG GIAN BẢN ĐỒ (GEOMETRY) ĐỂ TRÍCH XUẤT "DELIVERED TO" BLOCK
             if (!deliveredTo && items.length > 0) {
-                const delivItem = items.find(it => it.str.includes('Delivered To'));
-                const forStoreItem = items.find(it => it.str.includes('For Store'));
+                const orderedItem = items.find(it => it.str.includes('Ordered By') || it.str.includes('Ordered'));
+                const delivItem = items.find(it => it.str.includes('Delivered To') || it.str.includes('Delivered'));
+                const forStoreItem = items.find(it => it.str.includes('For Store') || it.str.includes('For'));
                 const targetArticleItem = items.find(it => it.str.includes('Article'));
 
                 if (delivItem && forStoreItem) {
-                    const xMin = delivItem.transform[4] - 20;
-                    const xMax = forStoreItem.transform[4] - 10;
-                    const topY = delivItem.transform[5];
+                    let xMin = delivItem.transform[4] - 150; // Fallback
+                    if (orderedItem) {
+                        xMin = (orderedItem.transform[4] + delivItem.transform[4]) / 2;
+                    }
+                    const xMax = (delivItem.transform[4] + forStoreItem.transform[4]) / 2;
+                    
+                    const topY = delivItem.transform[5] + 15; // Include ascenders and header
                     const bottomY = targetArticleItem ? targetArticleItem.transform[5] : topY - 150;
 
                     let delivItems = items.filter(it => 
@@ -110,6 +115,12 @@ async function extractPOData(arrayBuffer) {
                         }
                     });
                     if (currStr.trim()) dLines.push(currStr.trim());
+
+                    // Loại bỏ dòng tiêu đề nếu nó bị lẫn vào lưới tọa độ
+                    dLines = dLines.filter(line => {
+                        const l = line.toLowerCase().replace(/[^a-z0-9]/g, '');
+                        return l !== 'deliveredto' && l !== 'delivered' && l !== 'to';
+                    });
 
                     if (dLines.length > 0) {
                         deliveredTo = dLines.join(" | ");
