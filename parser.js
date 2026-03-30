@@ -301,16 +301,22 @@ async function extractPOData(arrayBuffer) {
                     }
                 }
 
-                // Tìm Delivery Date To Store
-                if (deliveryDateToStore === "Chưa rõ" && (/delivery\s*date/i.test(curLine))) {
-                    const sameLineMatch = lines[j].match(/Delivery\s*Date(?:\s*To\s*Store|\s*To\s*|(?:\s*Store)?)?[:\s.]*([0-9]{1,2}[\/\-.][0-9]{1,2}[\/\-.][0-9]{2,4})/i);
+                // Tìm Delivery Date To Store (chống lỗi dãn chữ của PDF.js)
+                const noSpaceLine = curLine.replace(/\s+/g, '');
+                if (deliveryDateToStore === "Chưa rõ" && noSpaceLine.includes("deliverydate")) {
+                    // Thử tìm ngay trên cùng một khối (bỏ khoảng trắng để test)
+                    const sameLineMatch = noSpaceLine.match(/deliverydate(?:tostore)?[:.]*([0-9]{1,2}[\/\-.][0-9]{1,2}[\/\-.][0-9]{2,4})/i);
                     if (sameLineMatch) {
-                        deliveryDateToStore = sameLineMatch[1].trim();
-                    } else if (j < lines.length - 1) {
-                        const nextLine = lines[j+1].trim();
-                        const dateMatch = nextLine.match(/([0-9]{1,2}[\/\-.][0-9]{1,2}[\/\-.][0-9]{2,4})(?:\s+[0-9]{2}:[0-9]{2})?/);
-                        if (dateMatch) {
-                            deliveryDateToStore = dateMatch[0].trim();
+                        deliveryDateToStore = sameLineMatch[1];
+                    } else {
+                        // Tăng tệp quét lên 30 dòng, bỏ toàn bộ khoảng trắng để bắt các dòng bị đứt khúc chữ
+                        for (let k = j + 1; k <= j + 30 && k < lines.length; k++) {
+                            const lookaheadLine = lines[k].replace(/\s+/g, '');
+                            const dateMatch = lookaheadLine.match(/([0-9]{1,2}[\/\-.][0-9]{1,2}[\/\-.](?:20[0-9]{2}|[0-9]{2}))/);
+                            if (dateMatch) {
+                                deliveryDateToStore = dateMatch[1];
+                                break;
+                            }
                         }
                     }
                 }
@@ -334,11 +340,8 @@ async function extractPOData(arrayBuffer) {
                 if (poDateMatch && poDate === "Chưa rõ") poDate = poDateMatch[1].trim();
                 
                 // Trích xuất Delivery Date To Store (Nếu có)
-                const delivDateStoreMatch = cleanLine.match(/Delivery\s*Date(?:\s*To\s*Store|\s*To\s*)?[:\s]*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i);
+                const delivDateStoreMatch = cleanLine.match(/Delivery\s*Date(?:\s*To\s*Store|\s*To\s*)?[:\s]*(\d{1,2}[\/\-.]\d{1,2}[\/\-.](?:20\d{2}|\d{2,4}))/i);
                 if (delivDateStoreMatch && deliveryDateToStore === "Chưa rõ") deliveryDateToStore = delivDateStoreMatch[1].trim();
-
-                // Nếu poDate có giá trị mà deliveryDateToStore chưa có, tạm lấy poDate làm mốc
-                if (poDate !== "Chưa rõ" && deliveryDateToStore === "Chưa rõ") deliveryDateToStore = poDate;
 
                 // Nhận diện siêu thị (Dựa trên từ khóa phổ biến)
                 if (supermarket === "Chưa rõ") {
@@ -410,6 +413,31 @@ async function extractPOData(arrayBuffer) {
             });
         }
         
+        // ================= FALLBACK SAU CÙNG =================
+        if (deliveryDateToStore === "Chưa rõ") {
+            const allText = debugLines.join("").replace(/\s+/g, "").toLowerCase();
+            
+            // Cách 1: Bắt chữ "delivery" (không cần "date" phòng khi PDF cắt rời chữ) 
+            // và ngày ĐÃ LOẠI BỎ dấu chấm (.) để CHỐNG BẮT NHẦM GIÁ TIỀN (VD: 1.200.000)
+            const ultimateMatch = allText.match(/delivery.{0,200}?([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-](?:20[0-9]{2}|[0-9]{2}))/);
+            
+            if (ultimateMatch) {
+                deliveryDateToStore = ultimateMatch[1];
+            } else {
+                // Cách 2: Vét Cạn Cực Đoan - Quét toàn bộ file PDF và vớt cái Ngày Tháng (/ hoặc -) CUỐI CÙNG!
+                // Vì Order Date (30/03) nằm ở trên cùng, Delivery Date (08/04) luôn nằm dưới đáy PDF. 
+                // Do đã cấm dấu chấm (.) nên tuyệt đối không sợ dính bảng giá.
+                const allDates = allText.match(/([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-](?:20[0-9]{2}|[0-9]{2}))/g);
+                if (allDates && allDates.length > 0) {
+                    const lastDate = allDates[allDates.length - 1];
+                    // Chỉ lấy nếu không bị trùng Order Date (tránh trường hợp PDF mất sạch ngày giao hàng)
+                    if (lastDate !== poDate) {
+                        deliveryDateToStore = lastDate;
+                    }
+                }
+            }
+        }
+
         // Bước cuối: Trộn Ghi chú chung (sharedPoNote) vào từng dòng của mảng extractedData
         if (sharedPoNote || supermarket !== "Chưa rõ" || poNumber !== "Chưa rõ" || poDate !== "Chưa rõ" || deliveredTo !== "" || orderNo !== "Chưa rõ" || deliveryDateToStore !== "Chưa rõ") {
             extractedData.forEach(row => {

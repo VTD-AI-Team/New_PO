@@ -247,9 +247,10 @@ document.addEventListener('DOMContentLoaded', () => {
         dataArray.forEach((row, index) => {
             const tr = document.createElement('tr');
             tr.setAttribute('data-row-index', index);
-            tr.className = "hover:bg-sky-50 transition-colors group border-b border-slate-100";
+            tr.className = "po-row hover:bg-sky-50 transition-colors group border-b border-slate-100";
 
             tr.innerHTML = `
+                <td data-field="poDate" contenteditable="true" class="px-4 py-3 border-r border-slate-100 text-slate-700 font-bold text-[10px] hover:bg-white">${row.poDate || 'Chưa rõ'}</td>
                 <td data-field="orderNo" contenteditable="true" class="px-4 py-3 border-r border-slate-100 text-slate-700 font-bold text-[10px] hover:bg-white">${row.orderNo || 'Chưa rõ'}</td>
                 <td data-field="deliveryDateToStore" contenteditable="true" class="px-4 py-3 border-r border-slate-100 text-slate-700 font-bold text-[10px] hover:bg-white">${row.deliveryDateToStore || 'Chưa rõ'}</td>
                 <td data-field="deliveredTo" contenteditable="true" class="px-4 py-3 border-r border-slate-100 text-slate-700 font-semibold text-[10px] leading-relaxed hover:bg-white break-words" title="${row.deliveredTo || ''}">${row.deliveredTo || ''}</td>
@@ -362,32 +363,24 @@ document.addEventListener('DOMContentLoaded', () => {
     els.btnExport.addEventListener('click', () => {
         if (!hasData) return;
 
-        const trElements = els.dataBody.querySelectorAll('tr[data-row-index]');
-        const rawJsonArray = [];
-
-        trElements.forEach(tr => {
-            const orderNo = tr.querySelector('td[data-field="orderNo"]').textContent.trim();
-            const deliveryDateToStore = tr.querySelector('td[data-field="deliveryDateToStore"]').textContent.trim();
-            const deliveredTo = tr.querySelector('td[data-field="deliveredTo"]').textContent.trim();
-            const bcode = tr.querySelector('td[data-field="barcode"]').textContent.trim();
-            const sku = tr.querySelector('td[data-field="skuName"]').textContent.trim();
-            const qtyStr = tr.querySelector('td[data-field="quantity"]').textContent.trim();
-            const unit = tr.querySelector('td[data-field="unit"]').textContent.trim();
-            const note = tr.querySelector('td[data-field="note"]').textContent.trim();
-            
-            rawJsonArray.push({
-                orderNo: orderNo,
-                deliveryDateToStore: deliveryDateToStore,
-                deliveredTo: deliveredTo,
-                barcode: bcode,
-                skuName: sku,
-                quantity: qtyStr,
-                unit: unit,
-                note: note
-            });
+        // Cập nhật lại allData từ DOM trước khi xuất
+        document.querySelectorAll('.po-row').forEach((tr, index) => {
+            const originalData = allData[index];
+            allData[index] = {
+                ...originalData,
+                poDate: tr.querySelector('td[data-field="poDate"]').textContent.trim(),
+                orderNo: tr.querySelector('td[data-field="orderNo"]').textContent.trim(),
+                deliveryDateToStore: tr.querySelector('td[data-field="deliveryDateToStore"]').textContent.trim(),
+                deliveredTo: tr.querySelector('td[data-field="deliveredTo"]').textContent.trim(),
+                barcode: tr.querySelector('td[data-field="barcode"]').textContent.trim(),
+                skuName: tr.querySelector('td[data-field="skuName"]').textContent.trim(),
+                quantity: tr.querySelector('td[data-field="quantity"]').textContent.trim(),
+                unit: tr.querySelector('td[data-field="unit"]').textContent.trim(),
+                note: tr.querySelector('td[data-field="note"]').textContent.trim()
+            };
         });
 
-        doExportExcel(rawJsonArray, `Trich_Xuat_PO_${currentPdfFiles.length}_Tep.xlsx`);
+        doExportExcel(allData, `Trich_Xuat_PO_${currentPdfFiles.length}_Tep.xlsx`);
     });
 
     // Hàm xuất dữ liệu ra tệp Excel
@@ -398,6 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if(isNaN(qty)) qty = item.quantity;
 
             return {
+                "Order Date": item.poDate,
                 "Order No": item.orderNo,
                 "Giao Trước Ngày": item.deliveryDateToStore,
                 "Nơi Giao (Delivered To)": item.deliveredTo,
