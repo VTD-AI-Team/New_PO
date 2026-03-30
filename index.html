@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>VitaDairy - Trình Trích Xuất PO (Ngoại Tuyến)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <!-- SheetJS for Excel formatting and export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- PDF.js for parsing PDF offline -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+    
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#1e40af", // Nền xanh đậm hơn (Blue 800)
+                        "accent": "#0ea5e9",  // Màu nhấn (Sky 500)
+                        "background-light": "#f8fafc",
+                        "background-dark": "#0f172a",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.5rem",
+                        "lg": "0.75rem",
+                        "xl": "1rem",
+                        "2xl": "1.5rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+    <style>
+        @keyframes slide-in {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .animate-slide-in { animation: slide-in 0.3s ease-out forwards; }
+        
+        /* Custom scrollbar */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        
+        /* Outline for offline editable table */
+        [contenteditable="true"]:focus {
+            outline: 2px solid #1e40af;
+            background-color: #f8fafc;
+            border-radius: 4px;
+        }
+
+        /* Nav active styling */
+        .nav-btn.active {
+            background: linear-gradient(90deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+            color: white;
+            border-left: 4px solid #38bdf8;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.1);
+        }
+
+        .nav-btn:hover:not(.active) {
+            background-color: rgba(255,255,255,0.05);
+            transform: translateX(4px);
+        }
+
+        /* Card Shadow Styling */
+        .glass-card {
+            background: white;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .glass-card:hover {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+            transform: translateY(-2px);
+        }
+
+        /* Skeleton Background Loading */
+        @keyframes pulse-bg {
+            0%, 100% { background-color: #f1f5f9; }
+            50% { background-color: #e2e8f0; }
+        }
+        .skeleton-cell {
+            animation: pulse-bg 1.5s infinite;
+            color: transparent;
+            border-radius: 4px;
+            user-select: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 font-display text-slate-900 h-screen w-full overflow-hidden flex selection:bg-indigo-100 selection:text-indigo-900">
+    
+        <!-- Quản lý Thông báo -->
+    <div class="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none" id="toast-container">
+        <!-- Lỗi -->
+        <div id="toastError" class="hidden flex items-center gap-3 bg-white border-l-4 border-red-500 p-4 rounded shadow-lg pointer-events-auto animate-slide-in">
+            <span class="material-symbols-outlined text-red-500">error</span>
+            <div>
+                <p class="text-sm font-bold text-red-600">Lỗi Hệ thống</p>
+                <p class="text-xs text-slate-500 max-w-[250px]" id="toastErrorMsg">✕ Lỗi xảy ra.</p>
+            </div>
+            <button onclick="document.getElementById('toastError').classList.add('hidden')" class="ml-auto text-slate-400 hover:text-slate-600">
+                <span class="material-symbols-outlined text-sm">close</span>
+            </button>
+        </div>
+        
+        <!-- Thành công -->
+        <div id="toastSuccess" class="hidden flex items-center gap-3 bg-white border-l-4 border-emerald-500 p-4 rounded shadow-lg pointer-events-auto animate-slide-in">
+            <span class="material-symbols-outlined text-emerald-500">check_circle</span>
+            <div>
+                <p class="text-sm font-bold text-emerald-600">Thành công</p>
+                <p class="text-xs text-slate-500 max-w-[250px]" id="toastSuccessMsg">✓ Tác vụ hoàn tất.</p>
+            </div>
+            <button onclick="document.getElementById('toastSuccess').classList.add('hidden')" class="ml-auto text-slate-400 hover:text-slate-600">
+                <span class="material-symbols-outlined text-sm">close</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- DANH MỤC ĐIỀU HƯỚNG -->
+    <nav class="w-[260px] bg-[#0c2f6d] text-white flex flex-col shrink-0 shadow-2xl z-30 relative overflow-hidden">
+        <!-- Trang trí nền -->
+        <div class="absolute -top-10 -right-10 size-40 bg-white/5 rounded-full blur-2xl"></div>
+        <div class="absolute bottom-10 -left-10 size-32 bg-indigo-500/20 rounded-full blur-xl"></div>
+        
+        <div class="h-20 flex items-center px-6 border-b border-indigo-900/50 bg-[#09224d]">
+            <div class="flex flex-col">
+                <span class="font-black text-xl tracking-tighter text-white leading-none">VITADAIRY</span>
+                <span class="text-[10px] font-bold text-indigo-300 tracking-[0.2em] mt-1 uppercase">BÓC TÁCH ĐƠN HÀNG</span>
+            </div>
+        </div>
+
+        <div class="flex flex-col p-4 gap-2 relative z-10 mt-4">
+            <button id="nav-btn-extractor" class="nav-btn active flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all text-white">
+                <span class="material-symbols-outlined text-[20px]">description</span>
+                Trích xuất PDF
+            </button>
+            <button id="nav-btn-reports" class="nav-btn flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all text-slate-400">
+                <span class="material-symbols-outlined text-[20px]">analytics</span>
+                Lịch sử & Báo cáo
+            </button>
+        </div>
+
+        <div class="mt-auto p-4 relative z-10">
+            <div class="bg-indigo-950/40 rounded-lg p-4 border border-indigo-800 text-[11px] text-slate-300">
+                <p class="font-bold text-emerald-400 flex items-center gap-1 mb-1">
+                    <span class="material-symbols-outlined text-[14px]">offline_pin</span>
+                    Chế độ 100% Offline
+                </p>
+                <p>Mọi dữ liệu trích xuất được lưu cục bộ trên máy tính. An toàn tuyệt đối!</p>
+            </div>
+        </div>
+    </nav>
+
+    <!-- MAIN CONTENT AREA -->
+    <div class="flex-1 flex flex-col min-w-0 overflow-hidden relative bg-slate-50">
+        
+        <!-- GLOBAL HEADER AREA -->
+        <header class="h-16 flex items-center justify-between border-b border-slate-200 bg-white px-8 shrink-0 z-10">
+            <div>
+                <h2 id="header-title" class="text-slate-900 text-lg font-black leading-tight tracking-tight uppercase">Trình trích xuất dữ liệu PO</h2>
+                <div class="flex items-center gap-3 mt-0.5">
+                    <span class="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                        <span class="size-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        Hệ thống sẵn sàng
+                    </span>
+                    <span class="text-slate-300">|</span>
+                    <p id="header-subtitle" class="text-slate-400 text-[11px] font-medium italic">Xử lý ngoại tuyến (Offline) bảo mật 100%</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <!-- Global Action: Refresh All -->
+                <button id="btn-refresh" title="Xóa dữ liệu màn hình và tải lại" class="flex items-center gap-2 px-4 py-2 text-xs rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold transition-all shadow-sm">
+                    <span class="material-symbols-outlined text-[18px]">refresh</span>
+                    Làm mới
+                </button>
+            </div>
+        </header>
+
+        <!-- CÔNG CỤ TRÍCH XUẤT -->
+        <main id="tab-extractor" class="flex-1 flex overflow-hidden">
+            <!-- Thanh bên: Vùng tải lên -->
+            <aside class="w-[300px] shrink-0 flex flex-col border-r border-slate-200 bg-white shadow-sm z-0">
+                <div class="p-6 flex flex-col gap-6 h-full min-h-0">
+                    <h3 class="text-xs font-black uppercase tracking-[0.1em] text-slate-400 flex items-center gap-2">
+                        <span class="material-symbols-outlined text-accent text-lg">upload_file</span>
+                        Tải tệp PDF PO
+                    </h3>
+
+                    <!-- Vùng kéo thả tệp -->
+                    <input type="file" id="po-file-input" class="hidden" accept=".pdf" multiple>
+                    <div id="po-drop-zone" title="Kéo thả file PDF" class="flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 px-4 py-10 text-center group cursor-pointer hover:border-accent hover:bg-sky-50 transition-all w-full">
+                        <div class="w-14 h-14 rounded-full bg-white shadow-md flex items-center justify-center text-accent group-hover:scale-110 transition-transform">
+                            <span class="material-symbols-outlined text-3xl" id="uploadIcon">cloud_upload</span>
+                        </div>
+                        <div>
+                            <p class="text-slate-900 text-[13px] font-bold" id="uploadText">Kéo thả file vào đây</p>
+                            <p class="text-slate-400 text-[11px] mt-1 font-medium italic">Hoặc click để chọn file</p>
+                        </div>
+                    </div>
+
+                    <!-- Hiển thị tên tệp đã chọn -->
+                    <div id="file-info-container" class="hidden bg-emerald-50 border border-emerald-100 rounded-lg p-3 shadow-sm flex items-start gap-2">
+                        <span class="material-symbols-outlined text-emerald-600 text-sm mt-0.5">folder_zip</span>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-xs font-bold text-slate-800 truncate" id="po-filename">Đã chọn 5 files</p>
+                            <p class="text-[10px] text-emerald-600 font-semibold mt-0.5">Sẵn sàng trích xuất...</p>
+                        </div>
+                    </div>
+
+                    <div class="flex-1"></div>
+
+                    <!-- Nút hành động -->
+                    <div class="flex flex-col gap-3">
+                        <button id="btn-extract" title="Đọc file PDF ngầm theo mảng" class="w-full h-12 flex items-center justify-center gap-3 rounded-xl bg-primary hover:bg-blue-800 text-white font-black text-sm shadow-lg shadow-blue-900/20 transition-all disabled:opacity-40 disabled:shadow-none disabled:cursor-not-allowed group" disabled>
+                            <span class="material-symbols-outlined text-[20px] group-enabled:group-hover:translate-x-1 transition-transform" id="extractIcon">auto_awesome</span>
+                            <span id="extractBtnText">BẮT ĐẦU TRÍCH XUẤT</span>
+                        </button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Nội dung chính: Lưới dữ liệu -->
+            <section class="flex-1 flex flex-col bg-slate-50 overflow-hidden">
+                <!-- Thanh tác vụ lưới dữ liệu -->
+                <div class="h-14 border-b border-slate-200 bg-white px-6 flex items-center justify-between shrink-0">
+                    <div class="flex items-center gap-4">
+                        <span class="text-xs font-black text-slate-400 uppercase tracking-widest">Kết quả trích xuất</span>
+                        <div id="loading-spinner" class="hidden flex items-center gap-2 text-primary">
+                            <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span class="text-[11px] font-bold">Đang xử lý PDF...</span>
+                        </div>
+                        <span id="row-count-badge" class="hidden bg-emerald-100 text-emerald-800 text-[11px] font-black px-2 py-0.5 rounded-full">0 dòng</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button id="btn-export-excel" title="Xuất toàn bộ mảng ra file .xlsx" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black transition-all shadow-md shadow-emerald-900/10 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                            <span class="material-symbols-outlined text-[18px]">download</span>
+                            XUẤT EXCEL
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex-1 overflow-auto custom-scrollbar relative p-5">
+                    <!-- Cấu trúc lưới dữ liệu -->
+                    <div class="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden h-full flex flex-col">
+                        <div class="overflow-auto custom-scrollbar flex-1">
+                            <table id="po-data-grid" class="w-full text-left border-collapse table-auto min-w-[900px]">
+                                <thead class="bg-slate-50/50 sticky top-0 z-10 border-b border-slate-200">
+                                    <tr>
+                                        <th class="w-[15%] px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Mã hàng (Barcode)</th>
+                                        <th class="w-[35%] px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Tên Sản Phẩm / Tên Sku</th>
+                                        <th class="w-[10%] px-4 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Số lượng</th>
+                                        <th class="w-[10%] px-4 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Đơn vị</th>
+                                        <th class="w-[20%] px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Ghi chú PO</th>
+                                        <th class="w-[10%] px-4 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="po-data-body" class="divide-y divide-slate-100 text-[13px] text-slate-700">
+                                    <!-- TRẠNG THÁI CHỜ -->
+                                    <tr id="idle-state-row" class="h-full">
+                                        <td class="p-20 text-center bg-slate-50/50" colspan="6">
+                                            <div class="flex flex-col items-center justify-center text-slate-400 gap-3">
+                                                <span class="material-symbols-outlined text-6xl opacity-30">inbox_customize</span>
+                                                <p class="text-[13px] font-semibold tracking-wide">Lưới dữ liệu trống. Chọn mẻ tệp để bắt đầu.</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- BÁO CÁO & LỊCH SỬ -->
+        <main id="tab-reports" class="flex-1 flex flex-col overflow-hidden bg-slate-50 hidden p-6 gap-6">
+            
+            <!-- Bộ lọc ngày nhanh -->
+            <div class="flex items-center gap-2 shrink-0 bg-white p-2 rounded-lg shadow-sm border border-slate-200 w-fit">
+                <button class="filter-btn active px-4 py-1.5 text-xs font-bold rounded-md bg-slate-100 text-slate-800 transition-colors" data-filter="all">Tất cả</button>
+                <button class="filter-btn px-4 py-1.5 text-xs font-bold rounded-md text-slate-500 hover:bg-slate-50 transition-colors" data-filter="today">Hôm nay</button>
+                <button class="filter-btn px-4 py-1.5 text-xs font-bold rounded-md text-slate-500 hover:bg-slate-50 transition-colors" data-filter="week">7 ngày qua</button>
+                <button class="filter-btn px-4 py-1.5 text-xs font-bold rounded-md text-slate-500 hover:bg-slate-50 transition-colors" data-filter="month">Tháng này</button>
+            </div>
+
+            <!-- Chỉ số KPI chính -->
+            <div class="grid grid-cols-3 gap-6 mb-8">
+                <div id="kpi-sessions-card" class="glass-card p-5 rounded-2xl flex items-center gap-4 cursor-pointer">
+                    <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                        <span class="material-symbols-outlined text-2xl">history</span>
+                    </div>
+                    <div>
+                        <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Phiên bóc tách</p>
+                        <h4 id="kpi-sessions" class="text-2xl font-black text-slate-900 leading-none mt-1">0</h4>
+                    </div>
+                </div>
+                <div id="kpi-qty-card" class="glass-card p-5 rounded-2xl flex items-center gap-4 cursor-pointer">
+                    <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <span class="material-symbols-outlined text-2xl">inventory_2</span>
+                    </div>
+                    <div>
+                        <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Tổng số lượng</p>
+                        <h4 id="kpi-qty" class="text-2xl font-black text-slate-900 leading-none mt-1">0</h4>
+                    </div>
+                </div>
+                <div id="kpi-rows-card" class="glass-card p-5 rounded-2xl flex items-center gap-4 cursor-pointer">
+                    <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                        <span class="material-symbols-outlined text-2xl">format_list_numbered</span>
+                    </div>
+                    <div>
+                        <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Tổng dòng hàng</p>
+                        <h4 id="kpi-rows" class="text-2xl font-black text-slate-900 leading-none mt-1">0</h4>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bảng lịch sử -->
+            <div class="bg-white rounded-xl shadow-lg border border-slate-200 flex-1 flex flex-col overflow-hidden">
+                <div class="px-5 py-4 border-b border-slate-200 bg-white flex justify-between items-center shrink-0">
+                    <h2 class="text-[13px] font-bold text-slate-800 uppercase tracking-wide flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary text-lg">history</span> Lịch sử các mẻ rà soát (Phiên)
+                    </h2>
+                </div>
+                <div class="flex-1 overflow-auto custom-scrollbar">
+                    <table class="w-full text-left border-collapse table-auto min-w-[700px]">
+                        <thead class="sticky top-0 z-20">
+                            <tr class="bg-slate-50 border-b border-slate-200">
+                                <th class="w-[20%] px-5 py-3 text-[11px] font-black text-slate-600 uppercase tracking-wider">Ngày quét</th>
+                                <th class="w-[30%] px-5 py-3 text-[11px] font-black text-slate-600 uppercase tracking-wider">Danh sách Tệp</th>
+                                <th class="w-[15%] px-5 py-3 text-[11px] font-black text-slate-600 uppercase tracking-wider text-right">Tổng Dòng</th>
+                                <th class="w-[15%] px-5 py-3 text-[11px] font-black text-slate-600 uppercase tracking-wider text-right">Tổng Số Lượng</th>
+                                <th class="w-[20%] px-5 py-3 text-[11px] font-black text-slate-600 uppercase tracking-wider text-center">Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-data-body" class="divide-y divide-slate-100 text-[13px] text-slate-700">
+                            <!-- JS tạo dữ liệu tại đây -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+
+    </div>
+
+    <!-- Scripts -->
+    <script src="filesystem_db.js"></script>
+    <script src="parser.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
