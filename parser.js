@@ -64,7 +64,9 @@ async function extractPOData(arrayBuffer) {
         let sharedPoNote = ""; // Lưu trữ Ghi chú chung của toàn bộ file PDF này
         let supermarket = "Chưa rõ";
         let poNumber = "Chưa rõ";
+        let orderNo = "Chưa rõ";
         let poDate = "Chưa rõ";
+        let deliveryDateToStore = "Chưa rõ";
         let deliveredTo = "";
         
         for (let i = 1; i <= totalPages; i++) {
@@ -153,19 +155,190 @@ async function extractPOData(arrayBuffer) {
             });
             if (currentLine.trim()) lines.push(currentLine.trim());
 
+            // TÌM KIẾM THEO KIỂU BẢN ĐỒ DỮ LIỆU (Dành riêng cho Order No và Order Date của Big C)
+            // Chiến thuật: Tìm vị trí của nhãn và lấy giá trị ở dòng ngay phía sau
+            for (let j = 0; j < lines.length; j++) {
+                const curLine = lines[j].toLowerCase();
+                const nextLine = (j + 1 < lines.length ? lines[j + 1] : "").toLowerCase();
+                const nextNextLine = (j + 2 < lines.length ? lines[j + 2] : "").toLowerCase();
+                const timeOnlyPattern = /^([01]?\d|2[0-3]):[0-5]\d$/;
+                const dateOnlyPattern = /(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/;
+                
+                // Tìm Order No
+                // Trường hợp đặc biệt: "Order" và "No" không nằm sát nhau (giữa có thể có "Order Date")
+                if (orderNo === "Chưa rõ" && /order/.test(curLine)) {
+                    let noIndex = -1;
+                    for (let k = j + 1; k <= j + 3 && k < lines.length; k++) {
+                        const lk = (lines[k] || "").toLowerCase();
+                        if (/(no|nr|orderno|ordernr)/.test(lk)) { noIndex = k; break; }
+                    }
+
+                    if (noIndex !== -1) {
+                        // Ưu tiên: nếu ngay dòng "No" có số
+                        const inlineCandidate = (lines[noIndex] || "").trim();
+                        const inlineDigitsMatch = inlineCandidate.match(/\d{6,15}/);
+                        if (inlineDigitsMatch) {
+                            orderNo = inlineDigitsMatch[0].trim();
+                        } else {
+                            // Dò số dài ngay sau cụm "No"
+                            for (let t = noIndex + 1; t <= noIndex + 12 && t < lines.length; t++) {
+                                const v = (lines[t] || "").trim();
+                                if (/[\/:]/.test(v)) continue; // Tránh nhặt nhầm ngày/giờ
+                                const directMatch = v.match(/\d{10,15}/);
+                                if (directMatch) {
+                                    orderNo = directMatch[0].trim();
+                                    break;
+                                }
+                            }
+
+                            // Nếu vẫn chưa ra, ghép các mảnh số trong cửa sổ rộng hơn
+                            if (orderNo === "Chưa rõ") {
+                                let joined = "";
+                                for (let t = noIndex + 1; t <= noIndex + 12 && t < lines.length; t++) {
+                                    const v = (lines[t] || "").trim();
+                                    if (/[\/:]/.test(v)) continue;
+                                    const digits = v.replace(/\D/g, "");
+                                    if (!digits) continue;
+                                    joined += digits;
+                                    if (joined.length >= 10) {
+                                        orderNo = joined;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Trường hợp label bị tách nhiều dòng: ví dụ "Order" + "No" / "Order" + "Nr"
+                if (orderNo === "Chưa rõ" && /order/.test(curLine) && /(no|nr|orderno)/.test(nextLine)) {
+                    // 1) Trường hợp "No <value>" nằm ngay cùng 1 dòng với nhãn "No"
+                    const inlineCandidate = (lines[j + 1] || "").trim();
+                    const inlineMatch = inlineCandidate.match(/((?=.*\d)[A-Z0-9-]{4,})/i);
+                    if (inlineMatch && /\d/.test(inlineMatch[1])) {
+                        orderNo = inlineMatch[1].trim();
+                    } else {
+                        // 2) Tìm trực tiếp số dài (đôi khi PDF tách dòng nhưng vẫn giữ đủ chuỗi)
+                        for (let t = j + 2; t <= j + 12 && t < lines.length; t++) {
+                            const v = (lines[t] || "").trim();
+                            if (/[\/:]/.test(v)) continue; // Tránh nhặt nhầm ngày/giờ
+                            const directMatch = v.match(/\d{10,15}/);
+                            if (directMatch) {
+                                orderNo = directMatch[0].trim();
+                                break;
+                            }
+                        }
+
+                        // 3) Nếu vẫn chưa ra, ghép các mảnh chỉ chứa chữ số trong cửa sổ rộng hơn
+                        if (orderNo === "Chưa rõ") {
+                            let joined = "";
+                            for (let t = j + 2; t <= j + 12 && t < lines.length; t++) {
+                                const v = (lines[t] || "").trim();
+                                if (/[\/:]/.test(v)) continue; // Tránh nhặt nhầm ngày/giờ
+                                const digits = v.replace(/\D/g, "");
+                                if (!digits) continue;
+                                joined += digits;
+                                if (joined.length >= 10) {
+                                    orderNo = joined;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (orderNo === "Chưa rõ" && (/order\s*no|order\s*nr|orderno|ordernr/i.test(curLine))) {
+                    // Cố thu thập số order trên cùng một dòng. Bắt buộc kết quả phải có chữ số
+                    const sameLineMatch = lines[j].match(/(?:Order\s*No|Order\s*Nr)[:\s.]*([A-Z0-9-]*\d+[A-Z0-9-]*)/i);
+                    if (sameLineMatch) {
+                        orderNo = sameLineMatch[1].trim();
+                    } else if (j < lines.length - 1) {
+                        // Nếu không có số trên cùng dòng, lấy dòng tiếp theo
+                        const nextLine = lines[j+1].trim();
+                        // Trích xuất chuỗi có chữ và số, đủ dài (ví dụ: 2612054838774)
+                        const orderMatch = nextLine.match(/\b([A-Z0-9-]*\d[A-Z0-9-]{4,})\b/i);
+                        if (orderMatch) {
+                            orderNo = orderMatch[1].trim();
+                        }
+                    }
+                }
+
+                // Tìm Order Date
+                // Trường hợp label bị tách nhiều dòng: ví dụ "Order" + "Date"
+                if (poDate === "Chưa rõ" && /order/.test(curLine) && /(date|po\s*date)/.test(nextLine)) {
+                    // Giá trị ngày có thể ở j+2 hoặc j+2 + (j+3 là phần giờ)
+                    const dateCandidateLine = lines[j + 2] ? lines[j + 2].trim() : "";
+                    const timeCandidateLine = lines[j + 3] ? lines[j + 3].trim() : "";
+                    const dateMatch = dateCandidateLine.match(dateOnlyPattern);
+                    if (dateMatch) {
+                        if (timeCandidateLine && timeOnlyPattern.test(timeCandidateLine)) {
+                            poDate = `${dateMatch[1]} ${timeCandidateLine}`;
+                        } else {
+                            poDate = dateMatch[1];
+                        }
+                    } else {
+                        // Fallback: thử lấy ngày trong phạm vi j+2..j+4
+                        for (let t = j + 2; t <= j + 4 && t < lines.length; t++) {
+                            const v = (lines[t] || "").trim();
+                            const m = v.match(/(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})(?:\s+([01]?\d|2[0-3]):[0-5]\d)?/);
+                            if (m && m[1]) {
+                                poDate = v.includes(':') ? m[0].trim() : m[1].trim();
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (poDate === "Chưa rõ" && (/order\s*date|po\s*date/i.test(curLine))) {
+                    const sameLineMatch = lines[j].match(/(?:Order\s*Date|PO\s*Date)[:\s.]*([0-9]{1,2}[\/\-.][0-9]{1,2}[\/\-.][0-9]{2,4})/i);
+                    if (sameLineMatch) {
+                        poDate = sameLineMatch[1].trim();
+                    } else if (j < lines.length - 1) {
+                        const nextLine = lines[j+1].trim();
+                        // Trích xuất chuỗi có định dạng ngày tháng nằm ĐÂU ĐÓ trong dòng dưới
+                        const dateMatch = nextLine.match(/([0-9]{1,2}[\/\-.][0-9]{1,2}[\/\-.][0-9]{2,4})(?:\s+[0-9]{2}:[0-9]{2})?/);
+                        if (dateMatch) {
+                            poDate = dateMatch[0].trim();
+                        }
+                    }
+                }
+
+                // Tìm Delivery Date To Store
+                if (deliveryDateToStore === "Chưa rõ" && (/delivery\s*date/i.test(curLine))) {
+                    const sameLineMatch = lines[j].match(/Delivery\s*Date(?:\s*To\s*Store|\s*To\s*|(?:\s*Store)?)?[:\s.]*([0-9]{1,2}[\/\-.][0-9]{1,2}[\/\-.][0-9]{2,4})/i);
+                    if (sameLineMatch) {
+                        deliveryDateToStore = sameLineMatch[1].trim();
+                    } else if (j < lines.length - 1) {
+                        const nextLine = lines[j+1].trim();
+                        const dateMatch = nextLine.match(/([0-9]{1,2}[\/\-.][0-9]{1,2}[\/\-.][0-9]{2,4})(?:\s+[0-9]{2}:[0-9]{2})?/);
+                        if (dateMatch) {
+                            deliveryDateToStore = dateMatch[0].trim();
+                        }
+                    }
+                }
+            }
+
             debugLines.push(...lines); // Lưu dòng tự nhiên để kiểm tra
 
             lines.forEach(line => {
                 const cleanLine = line.replace(/\s+/g, ' ').trim(); 
                 
-                // 1. Kiểm tra xem dòng này có phải là Header của PO không
-                // Trích xuất Số PO
-                const poNumMatch = cleanLine.match(/(?:Số đơn hàng|Số PO|PO No|PO Number)[:\s]+([A-Z0-9-]+)/i);
-                if (poNumMatch && poNumber === "Chưa rõ") poNumber = poNumMatch[1].trim();
+                // Trích xuất Số PO / Order No (đặc thù Big C và chung)
+                const poNumMatch = cleanLine.match(/(?:Số\s*đơn\s*hàng|Số\s*PO|PO\s*No|PO\s*Number|Order\s*No)[:\s]*([A-Z0-9-]*\d+[A-Z0-9-]*)/i);
+                if (poNumMatch && poNumber === "Chưa rõ") {
+                    const val = poNumMatch[1].trim();
+                     poNumber = val; // Bắt buộc có số nên không sợ lẫn chữ ngắn
+                }
+                if (poNumber !== "Chưa rõ" && orderNo === "Chưa rõ") orderNo = poNumber;
 
-                // Trích xuất Ngày PO
-                const poDateMatch = cleanLine.match(/(?:Ngày|Ngày đặt hàng|Date)[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i);
+                // Trích xuất Ngày PO / Order Date
+                const poDateMatch = cleanLine.match(/(?:Ngày đặt hàng|Ngày đơn hàng|Ngày|Date|Order\s*Date|PO\s*Date)[:\s]*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}(?:\s+\d{2}:\d{2})?)/i);
                 if (poDateMatch && poDate === "Chưa rõ") poDate = poDateMatch[1].trim();
+                
+                // Trích xuất Delivery Date To Store (Nếu có)
+                const delivDateStoreMatch = cleanLine.match(/Delivery\s*Date(?:\s*To\s*Store|\s*To\s*)?[:\s]*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i);
+                if (delivDateStoreMatch && deliveryDateToStore === "Chưa rõ") deliveryDateToStore = delivDateStoreMatch[1].trim();
+
+                // Nếu poDate có giá trị mà deliveryDateToStore chưa có, tạm lấy poDate làm mốc
+                if (poDate !== "Chưa rõ" && deliveryDateToStore === "Chưa rõ") deliveryDateToStore = poDate;
 
                 // Nhận diện siêu thị (Dựa trên từ khóa phổ biến)
                 if (supermarket === "Chưa rõ") {
@@ -200,6 +373,8 @@ async function extractPOData(arrayBuffer) {
                             supermarket: supermarket,
                             poNumber: poNumber,
                             poDate: poDate,
+                            orderNo: orderNo,
+                            deliveryDateToStore: deliveryDateToStore,
                             barcode: match[template.map.barcode],
                             skuName: match[template.map.skuName].trim(),
                             quantity: match[template.map.quantity],
@@ -216,6 +391,8 @@ async function extractPOData(arrayBuffer) {
                                 supermarket: supermarket,
                                 poNumber: poNumber,
                                 poDate: poDate,
+                                orderNo: orderNo,
+                                deliveryDateToStore: deliveryDateToStore,
                                 barcode: match[template.map.barcode],
                                 skuName: match[template.map.skuName].trim() + " (Hàng Mẫu / Tặng)",
                                 quantity: match[template.map.freeQty], 
@@ -234,12 +411,14 @@ async function extractPOData(arrayBuffer) {
         }
         
         // Bước cuối: Trộn Ghi chú chung (sharedPoNote) vào từng dòng của mảng extractedData
-        if (sharedPoNote || supermarket !== "Chưa rõ" || poNumber !== "Chưa rõ" || poDate !== "Chưa rõ" || deliveredTo !== "") {
+        if (sharedPoNote || supermarket !== "Chưa rõ" || poNumber !== "Chưa rõ" || poDate !== "Chưa rõ" || deliveredTo !== "" || orderNo !== "Chưa rõ" || deliveryDateToStore !== "Chưa rõ") {
             extractedData.forEach(row => {
                 if (sharedPoNote) row.note = row.note ? (row.note + " | " + sharedPoNote) : sharedPoNote;
                 if (row.supermarket === "Chưa rõ") row.supermarket = supermarket;
                 if (row.poNumber === "Chưa rõ") row.poNumber = poNumber;
+                if (row.orderNo === "Chưa rõ") row.orderNo = orderNo;
                 if (row.poDate === "Chưa rõ") row.poDate = poDate;
+                if (row.deliveryDateToStore === "Chưa rõ") row.deliveryDateToStore = deliveryDateToStore;
                 if (!row.deliveredTo) row.deliveredTo = deliveredTo;
             });
         }

@@ -51,6 +51,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const LOADING_SKELETON_HTML = Array(3).fill(`
         <tr>
+            <td class="px-4 py-4 border-b border-slate-100"><div class="h-4 bg-slate-100 skeleton-cell w-20"></div></td>
+            <td class="px-4 py-4 border-b border-slate-100"><div class="h-4 bg-slate-100 skeleton-cell w-20"></div></td>
             <td class="px-4 py-4 border-b border-slate-100"><div class="h-4 bg-slate-100 skeleton-cell w-32"></div></td>
             <td class="px-4 py-4 border-b border-slate-100"><div class="h-4 bg-slate-100 skeleton-cell w-20"></div></td>
             <td class="px-4 py-4 border-b border-slate-100"><div class="h-4 bg-slate-100 skeleton-cell w-48"></div></td>
@@ -248,6 +250,8 @@ document.addEventListener('DOMContentLoaded', () => {
             tr.className = "hover:bg-sky-50 transition-colors group border-b border-slate-100";
 
             tr.innerHTML = `
+                <td data-field="orderNo" contenteditable="true" class="px-4 py-3 border-r border-slate-100 text-slate-700 font-bold text-[10px] hover:bg-white">${row.orderNo || 'Chưa rõ'}</td>
+                <td data-field="deliveryDateToStore" contenteditable="true" class="px-4 py-3 border-r border-slate-100 text-slate-700 font-bold text-[10px] hover:bg-white">${row.deliveryDateToStore || 'Chưa rõ'}</td>
                 <td data-field="deliveredTo" contenteditable="true" class="px-4 py-3 border-r border-slate-100 text-slate-700 font-semibold text-[10px] leading-relaxed hover:bg-white break-words" title="${row.deliveredTo || ''}">${row.deliveredTo || ''}</td>
                 <td data-field="barcode" contenteditable="true" class="px-4 py-3 border-r border-slate-100 font-mono font-bold text-indigo-700 text-[11px] hover:bg-white">${row.barcode || ''}</td>
                 <td data-field="skuName" contenteditable="true" class="px-4 py-3 border-r border-slate-100 font-bold text-slate-900 text-[11px] hover:bg-white">${row.skuName || ''}</td>
@@ -362,6 +366,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const rawJsonArray = [];
 
         trElements.forEach(tr => {
+            const orderNo = tr.querySelector('td[data-field="orderNo"]').textContent.trim();
+            const deliveryDateToStore = tr.querySelector('td[data-field="deliveryDateToStore"]').textContent.trim();
             const deliveredTo = tr.querySelector('td[data-field="deliveredTo"]').textContent.trim();
             const bcode = tr.querySelector('td[data-field="barcode"]').textContent.trim();
             const sku = tr.querySelector('td[data-field="skuName"]').textContent.trim();
@@ -370,6 +376,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const note = tr.querySelector('td[data-field="note"]').textContent.trim();
             
             rawJsonArray.push({
+                orderNo: orderNo,
+                deliveryDateToStore: deliveryDateToStore,
                 deliveredTo: deliveredTo,
                 barcode: bcode,
                 skuName: sku,
@@ -390,6 +398,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if(isNaN(qty)) qty = item.quantity;
 
             return {
+                "Order No": item.orderNo,
+                "Giao Trước Ngày": item.deliveryDateToStore,
                 "Nơi Giao (Delivered To)": item.deliveredTo,
                 "Barcode Mã vạch": item.barcode,
                 "Tên Sku": item.skuName,
@@ -404,6 +414,8 @@ document.addEventListener('DOMContentLoaded', () => {
         XLSX.utils.book_append_sheet(workbook, worksheet, "PO_Data");
 
         worksheet['!cols'] = [ 
+            {wch: 15}, // Order No
+            {wch: 15}, // Delivery Date
             {wch: 60}, // Delivered To
             {wch: 20}, // Barcode
             {wch: 60}, // Tên SKU
@@ -430,7 +442,7 @@ document.addEventListener('DOMContentLoaded', () => {
         els.btnExport.disabled = true;
         els.dataBody.innerHTML = `
             <tr id="idle-state-row" class="h-full">
-                <td class="p-20 text-center bg-slate-50/50" colspan="7">
+                <td class="p-20 text-center bg-slate-50/50" colspan="9">
                     <div class="flex flex-col items-center justify-center text-slate-400 gap-3">
                         <span class="material-symbols-outlined text-6xl opacity-30">inbox_customize</span>
                         <p class="text-[13px] font-semibold tracking-wide">Lưới dữ liệu trống. Chọn mẻ file để bắt đầu.</p>
