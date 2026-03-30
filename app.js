@@ -52,9 +52,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const LOADING_SKELETON_HTML = Array(3).fill(`
         <tr>
             <td class="px-4 py-4 border-b border-slate-100"><div class="h-4 bg-slate-100 skeleton-cell w-20"></div></td>
-            <td class="px-4 py-4 border-b border-slate-100"><div class="h-4 bg-slate-100 skeleton-cell w-64"></div></td>
+            <td class="px-4 py-4 border-b border-slate-100"><div class="h-4 bg-slate-100 skeleton-cell w-48"></div></td>
             <td class="px-4 py-4 border-b border-slate-100"><div class="h-4 bg-slate-100 skeleton-cell w-16 mx-auto"></div></td>
             <td class="px-4 py-4 border-b border-slate-100"><div class="h-4 bg-slate-100 skeleton-cell w-16 mx-auto"></div></td>
+            <td class="px-4 py-4 border-b border-slate-100"><div class="h-4 bg-slate-100 skeleton-cell w-32"></div></td>
             <td class="px-4 py-4 border-b border-slate-100"><div class="h-4 bg-slate-100 skeleton-cell w-48"></div></td>
             <td class="px-4 py-4 border-b border-slate-100"><div class="h-4 bg-slate-100 skeleton-cell w-8 mx-auto"></div></td>
         </tr>
@@ -251,7 +252,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td data-field="skuName" contenteditable="true" class="px-4 py-3 border-r border-slate-100 font-bold text-slate-900 text-[11px] hover:bg-white">${row.skuName || ''}</td>
                 <td data-field="quantity" contenteditable="true" class="px-4 py-3 border-r border-slate-100 text-center font-black text-slate-900 text-[11px] hover:bg-white">${row.quantity || '0'}</td>
                 <td data-field="unit" contenteditable="true" class="px-4 py-3 border-r border-slate-100 text-center font-bold text-slate-500 text-[11px] hover:bg-white">${row.unit || ''}</td>
-                <td data-field="note" contenteditable="true" class="px-4 py-3 text-emerald-700 font-medium text-[10px] hover:bg-white">${row.note || ''}</td>
+                <td data-field="note" contenteditable="true" class="px-4 py-3 border-r border-slate-100 text-emerald-700 font-medium text-[10px] hover:bg-white line-clamp-2" title="${row.note || ''}">${row.note || ''}</td>
+                <td data-field="deliveredTo" contenteditable="true" class="px-4 py-3 text-slate-600 font-medium text-[9px] leading-tight hover:bg-white" title="${row.deliveredTo || ''}"><div class="line-clamp-2">${row.deliveredTo || ''}</div></td>
                 <td class="px-4 py-3 text-center">
                     <button class="text-red-400 hover:text-red-600 transition-colors" onclick="this.closest('tr').remove();" title="Xóa dòng này">
                         <span class="material-symbols-outlined text-[16px]">delete</span>
@@ -365,13 +367,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const qtyStr = tr.querySelector('td[data-field="quantity"]').textContent.trim();
             const unit = tr.querySelector('td[data-field="unit"]').textContent.trim();
             const note = tr.querySelector('td[data-field="note"]').textContent.trim();
+            const deliveredTo = tr.querySelector('td[data-field="deliveredTo"]').textContent.trim();
             
             rawJsonArray.push({
                 barcode: bcode,
                 skuName: sku,
                 quantity: qtyStr,
                 unit: unit,
-                note: note
+                note: note,
+                deliveredTo: deliveredTo
             });
         });
 
@@ -390,7 +394,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 "Tên Sku": item.skuName,
                 "Order Quantity": qty,
                 "Unit": item.unit,
-                "Ghi Chú": item.note
+                "Ghi Chú": item.note,
+                "Nơi Giao (Delivered To)": item.deliveredTo
             };
         });
 
@@ -403,7 +408,8 @@ document.addEventListener('DOMContentLoaded', () => {
             {wch: 60}, // Tên SKU
             {wch: 15}, // Số lượng
             {wch: 10}, // Unit
-            {wch: 40}  // Note
+            {wch: 40}, // Note
+            {wch: 60}  // Delivered To
         ];
 
         XLSX.writeFile(workbook, filename);
@@ -424,7 +430,7 @@ document.addEventListener('DOMContentLoaded', () => {
         els.btnExport.disabled = true;
         els.dataBody.innerHTML = `
             <tr id="idle-state-row" class="h-full">
-                <td class="p-20 text-center bg-slate-50/50" colspan="6">
+                <td class="p-20 text-center bg-slate-50/50" colspan="7">
                     <div class="flex flex-col items-center justify-center text-slate-400 gap-3">
                         <span class="material-symbols-outlined text-6xl opacity-30">inbox_customize</span>
                         <p class="text-[13px] font-semibold tracking-wide">Lưới dữ liệu trống. Chọn mẻ file để bắt đầu.</p>

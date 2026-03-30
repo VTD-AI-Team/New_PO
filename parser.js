@@ -15,7 +15,7 @@ const PO_TEMPLATES = [
         // Định dạng cột: Article | Article Desc | OU Type | LV | SKU/OU | OU Qty | Free Qty | Net Price | Unit | Total
         // Ví dụ: 8936170701862 TH6 SPDD COLOS HT 800G Pack 1 6 1 0 541.785 Cai 3.250.710
         name: "Big C / GO!",
-        regex: /^([A-Z0-9-]{8,15})\s+(.+?)\s+([A-Za-z]+)\s+(\d+)\s+(\d+)\s+(\d+(?:[.,]\d+)*)\s+(\d+(?:[.,]\d+)*)\s+(\d+(?:[.,]\d+)*)\s+([A-Za-zÀ-ỹ]+)\s+(\d+(?:[.,]\d+)*)$/i,
+        regex: /^([A-Z0-9-]{8,15})\s+(.+?)\s+([A-Za-z]+)\s+(\d+)\s+(\d+)\s+(\d+(?:[.,]\d+)*)\s+(\d+(?:[.,]\d+)*)\s+(\d+(?:[.,]\d+)*)\s+([A-Za-zÀ-ỹ]+)\s+(\d+(?:[.,]\d+)*)/i,
         map: {
             barcode: 1,    // Cụm bắt thứ 1 là Article
             skuName: 2,    // Cụm bắt thứ 2 là Article Desc
@@ -65,11 +65,57 @@ async function extractPOData(arrayBuffer) {
         let supermarket = "Chưa rõ";
         let poNumber = "Chưa rõ";
         let poDate = "Chưa rõ";
+        let deliveredTo = "";
         
         for (let i = 1; i <= totalPages; i++) {
             const page = await pdfDocument.getPage(i);
             const content = await page.getTextContent();
             const items = content.items;
+
+            // XỬ LÝ KHÔNG GIAN BẢN ĐỒ (GEOMETRY) ĐỂ TRÍCH XUẤT "DELIVERED TO" BLOCK
+            if (!deliveredTo && items.length > 0) {
+                const delivItem = items.find(it => it.str.includes('Delivered To'));
+                const forStoreItem = items.find(it => it.str.includes('For Store'));
+                const targetArticleItem = items.find(it => it.str.includes('Article'));
+
+                if (delivItem && forStoreItem) {
+                    const xMin = delivItem.transform[4] - 20;
+                    const xMax = forStoreItem.transform[4] - 10;
+                    const topY = delivItem.transform[5];
+                    const bottomY = targetArticleItem ? targetArticleItem.transform[5] : topY - 150;
+
+                    let delivItems = items.filter(it => 
+                        it.transform[4] >= xMin && 
+                        it.transform[4] < xMax && 
+                        it.transform[5] < topY && 
+                        it.transform[5] > bottomY
+                    );
+
+                    delivItems.sort((a, b) => {
+                        const yDiff = Math.abs(b.transform[5] - a.transform[5]);
+                        if (yDiff > 5) return b.transform[5] - a.transform[5];
+                        return a.transform[4] - b.transform[4];
+                    });
+
+                    let dLines = [];
+                    let currYLine = null;
+                    let currStr = "";
+                    delivItems.forEach(it => {
+                        if (currYLine === null || Math.abs(currYLine - it.transform[5]) > 5) {
+                            if (currStr.trim()) dLines.push(currStr.trim());
+                            currStr = it.str;
+                            currYLine = it.transform[5];
+                        } else {
+                            currStr += " " + it.str.trim();
+                        }
+                    });
+                    if (currStr.trim()) dLines.push(currStr.trim());
+
+                    if (dLines.length > 0) {
+                        deliveredTo = dLines.join(" | ");
+                    }
+                }
+            }
 
             // Gom chữ về cùng 1 dòng với dung sai 8px
             items.sort((a, b) => {
@@ -149,6 +195,7 @@ async function extractPOData(arrayBuffer) {
                             price: match[template.map.price] || "0",
                             total: match[template.map.total] || "0",
                             unit: match[template.map.unit].charAt(0).toUpperCase() + match[template.map.unit].slice(1).toLowerCase(),
+                            deliveredTo: deliveredTo,
                             note: "" 
                         });
 
@@ -164,6 +211,7 @@ async function extractPOData(arrayBuffer) {
                                 price: "0",
                                 total: "0",
                                 unit: match[template.map.unit].charAt(0).toUpperCase() + match[template.map.unit].slice(1).toLowerCase(),
+                                deliveredTo: deliveredTo,
                                 note: "Khuyến mại/Hàng Tặng"
                             });
                         }
@@ -175,12 +223,13 @@ async function extractPOData(arrayBuffer) {
         }
         
         // Bước cuối: Trộn Ghi chú chung (sharedPoNote) vào từng dòng của mảng extractedData
-        if (sharedPoNote || supermarket !== "Chưa rõ" || poNumber !== "Chưa rõ" || poDate !== "Chưa rõ") {
+        if (sharedPoNote || supermarket !== "Chưa rõ" || poNumber !== "Chưa rõ" || poDate !== "Chưa rõ" || deliveredTo !== "") {
             extractedData.forEach(row => {
                 if (sharedPoNote) row.note = row.note ? (row.note + " | " + sharedPoNote) : sharedPoNote;
                 if (row.supermarket === "Chưa rõ") row.supermarket = supermarket;
                 if (row.poNumber === "Chưa rõ") row.poNumber = poNumber;
                 if (row.poDate === "Chưa rõ") row.poDate = poDate;
+                if (!row.deliveredTo) row.deliveredTo = deliveredTo;
             });
         }
 
