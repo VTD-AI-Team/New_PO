@@ -174,6 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let allJsonResults = [];
             let successCount = 0;
             let errorCount = 0;
+            let failedFilesList = []; // Mảng chứa tên tệp bị lỗi
 
             // Chạy tuần tự từng file qua Web Worker của pdf.js
             for (let i = 0; i < currentPdfFiles.length; i++) {
@@ -185,11 +186,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (err) {
                     console.error(`Lỗi trích xuất file ${currentPdfFiles[i].name}:`, err);
                     errorCount++;
+                    failedFilesList.push(currentPdfFiles[i].name);
                 }
             }
             
             if (allJsonResults.length === 0) {
-                throw new Error("Toàn bộ file đều thất bại (Hãy kiểm tra lại định dạng tệp PDF).");
+                const failMsg = failedFilesList.length > 0 ? "\\nCác file lỗi: " + failedFilesList.join(', ') : "";
+                throw new Error("Toàn bộ file đều thất bại (Hãy kiểm tra lại định dạng tệp PDF)." + failMsg);
             }
             
             // Xử lý thành công
@@ -219,8 +222,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // Thông báo người dùng
-            let msg = `✓ Trích xuất thành công ${successCount} tệp (${allJsonResults.length} dòng dữ liệu).`;
-            if (errorCount > 0) msg += ` Cảnh báo: Có ${errorCount} tệp bị lỗi.`;
+            let msg = `✓ Trích xuất hoàn tất ${successCount}/${currentPdfFiles.length} tệp.`;
+            if (errorCount > 0) {
+                msg += `\n❌ Lỗi ${errorCount} tệp: ${failedFilesList.join(', ')}`;
+            }
             showToast(errorCount > 0 ? 'error' : 'success', msg);
             
             if(els.rowCountBadge) {
@@ -454,12 +459,12 @@ document.addEventListener('DOMContentLoaded', () => {
         els.toastError.classList.add('hidden');
 
         if (type === 'error') {
-            els.toastErrorMsg.textContent = message;
+            els.toastErrorMsg.innerText = message;
             els.toastError.classList.remove('hidden');
             clearTimeout(errorTimer);
             errorTimer = setTimeout(() => els.toastError.classList.add('hidden'), 5000);
         } else if (type === 'success') {
-            els.toastSuccessMsg.textContent = message;
+            els.toastSuccessMsg.innerText = message;
             els.toastSuccess.classList.remove('hidden');
             clearTimeout(successTimer);
             successTimer = setTimeout(() => els.toastSuccess.classList.add('hidden'), 5000);
