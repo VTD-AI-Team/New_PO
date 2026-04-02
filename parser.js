@@ -12,18 +12,18 @@
 const PO_TEMPLATES = [
     {
         // === 1. Template dành cho: BIG C / GO! ===
-        // Định dạng cột: Article | Article Desc | OU Type | LV | SKU/OU | OU Qty | Free Qty | Net Price | Unit | Total
-        // Ví dụ: 8936170701862 TH6 SPDD COLOS HT 800G Pack 1 6 1 0 541.785 Cai 3.250.710
+        // Định dạng cột: Article | Article Desc | (OU Type - tùy chọn) | LV | SKU/OU | OU Qty | Free Qty | Net Price | Unit | Total
+        // Do lỗi PDF.js có thể trộn OU Type (Pack) vào Article Desc, ta để (.+?) nuốt luôn đoạn này nếu có.
         name: "Big C / GO!",
-        regex: /^([A-Z0-9-]{8,15})\s+(.+?)\s+([A-Za-z]+)\s+(\d+)\s+(\d+)\s+(\d+(?:[.,]\d+)*)\s+(\d+(?:[.,]\d+)*)\s+(\d+(?:[.,]\d+)*)\s+([A-Za-zÀ-ỹ]+)\s+(\d+(?:[.,]\d+)*)/i,
+        regex: /^([A-Z0-9-]{8,15})\s+(.+?)\s+(\d+)\s+(\d+)\s+(\d+(?:[.,]\d+)*)\s+(\d+(?:[.,]\d+)*)\s+(\d+(?:[.,]\d+)*)\s+([A-Za-zÀ-ỹ]+)\s+(\d+(?:[.,]\d+)*)/i,
         map: {
             barcode: 1,    // Cụm bắt thứ 1 là Article
-            skuName: 2,    // Cụm bắt thứ 2 là Article Desc
-            quantity: 6,   // Cụm bắt thứ 6 là OU Qty
-            freeQty: 7,    // Cụm bắt thứ 7 là Free Qty
-            price: 8,      // Cụm bắt thứ 8 là Net Price
-            unit: 9,       // Cụm bắt thứ 9 là Unit
-            total: 10      // Cụm bắt thứ 10 là Total
+            skuName: 2,    // Cụm bắt thứ 2 là Article Desc (kèm Pack nếu có)
+            quantity: 5,   // Cụm bắt thứ 5 là OU Qty (đã dịch lên 1 vì bỏ OU Type)
+            freeQty: 6,    // Cụm bắt thứ 6 là Free Qty
+            price: 7,      // Cụm bắt thứ 7 là Net Price
+            unit: 8,       // Cụm bắt thứ 8 là Unit
+            total: 9       // Cụm bắt thứ 9 là Total
         }
     },
     {
